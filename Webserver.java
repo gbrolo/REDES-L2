@@ -1,3 +1,9 @@
+/**
+ *  Webserver.java
+ *  A simple server that responds to GET and HEAD requests.
+ *  @author: Gabriel Brolo, 15105. Universidad del Valle de Guatemala. Redes.
+ *  1/9/2019
+ */
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -6,16 +12,11 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.util.Date;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 
 final class HttpRequest implements Runnable {
-    final static class METHOD {
-        final static String GET = "GET";
-        final static String HEAD = "HEAD";
-    }
-
-    final static String VERSION = "HTTP/1.0";
-    final static String CRLF = "\r\n";
-
     Socket socket;
 
     public HttpRequest(Socket socket) throws Exception { this.socket = socket; }
@@ -37,67 +38,76 @@ final class HttpRequest implements Runnable {
         String request = br.readLine();
         System.out.println("\nProcessing new request: \n" + request);
 
+        // METHOD TYPE
         String [] requestSplit = request.split(" ");
+        String methodType = requestSplit[0];
+
         String documentRequested = requestSplit[1].substring(1);
 
         System.out.println("\nDocument requested: \n" + documentRequested);
 
-        String response = processFile(documentRequested);
-        System.out.println("\nServer response: \n" + response);
+        processFile(documentRequested, out, methodType);
 
-        out.writeBytes(
-            response
-        );
         out.close();
         br.close();
         socket.close();
     }
 
-    private String processFile(String documentRequested) {
+    private void processFile(String documentRequested, DataOutputStream out, String methodType) {
         File f = new File(documentRequested);
-        if(f.exists() && !f.isDirectory()) {
-            //System.out.println("File found");
-
+        if(f.exists() && !f.isDirectory()) {            
             String contentType = contentType(documentRequested);
 
             try {
-                String documentRead = readFile(documentRequested, contentType);
+                byte[] documentRead = readFile(documentRequested, contentType);
+                DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+	            Date date = new Date();
 
                 String response = "HTTP/1.1 200 OK\n" +
                 "Connection close\n" +
-                "Date: Thu, 06 Aug 1998 12:00:15 GMT\n" +
+                "Date: " + dateFormat.format(date) + "\n" +
                 "Server: brolius\n" +
-                "Last-Modified: Mon, 22 Jun 1998\n" +
-                "Content-Length: " + documentRead.length() + "\n" +
+                "Content-Length: " + documentRead.length + "\n" +
                 "Content-Type: " + contentType + "\n" +
-                "\n"+
-                documentRead;
+                "\n";
 
-                return response;
+                if (methodType.equals("GET")) {
+                    for (Byte b : response.getBytes()) {
+                        out.write(b);
+                    }
+                }
+
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                buffer.write(documentRead);
+                buffer.writeTo(out);
+
+                //return response;
             } catch(Exception e) { 
                 //System.out.println(e); 
                 try {
-                    return getErrorPage();
+                    String response = getErrorPage();
+
+                    for (Byte b : response.getBytes()) {
+                        out.write(b);
+                    }
+                    
                 } catch(Exception ex) {}             
             }
 
-        } else {
-            //System.out.println("File NOT found");            
+        } else {                     
             try {
-                return getErrorPage();
+                String response = getErrorPage();
+
+                for (Byte b : response.getBytes()) {
+                    out.write(b);
+                }
+                
             } catch(Exception ex) {}
         }
 
-        return "HTTP/1.1 500 Internal Server Error\n" +
-                "Connection close\n" +
-                "Date: Thu, 06 Aug 1998 12:00:15 GMT\n" +
-                "Server: miServidor\n" +                    
-                "Content-Length: " + "38" + "\n" +
-                "Content-Type: text/html\n" +
-                "\n"+
-                "<HTML>500 Internal Server Error</HTML>"; 
     }
 
+    // for content-type header
     private static String contentType(String file) {
         if (file.toLowerCase().endsWith(".html")) {
             return "text/html";
@@ -105,15 +115,20 @@ final class HttpRequest implements Runnable {
             return "image/gif";
         } else if (file.toLowerCase().endsWith(".jpg")) {
             return "image/jpeg";
+        } else if (file.toLowerCase().endsWith(".css")) {
+            return "text/css";
         } else return "application/octet-stream";
     }
 
+    // returns 404 error page
     private String getErrorPage() throws Exception {
-        String documentRead = readFile("not-found.html", contentType("not-found.html"));
+        String documentRead = new String(readFile("not-found.html", contentType("not-found.html")));
+        DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+        Date date = new Date();
 
         return "HTTP/1.1 404 Not Found\n" +
                 "Connection close\n" +
-                "Date: Thu, 06 Aug 1998 12:00:15 GMT\n" +
+                "Date: " + dateFormat.format(date) + "\n" +
                 "Server: miServidor\n" +                    
                 "Content-Length: " + documentRead.length() + "\n" +
                 "Content-Type: text/html\n" +
@@ -121,10 +136,10 @@ final class HttpRequest implements Runnable {
                 documentRead;
     }
 
-    private static String readFile(String path, String contentType) throws IOException {
+    private static byte[] readFile(String path, String contentType) throws IOException {
         byte[] encoded = Files.readAllBytes(Paths.get(path));        
 
-        return new String(encoded);
+        return encoded;
     }
 
 }
